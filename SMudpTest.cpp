@@ -106,7 +106,7 @@ int main(int argc, char* argv[])
 
 		std::cout << "Input: ";
 
-		// Inputting into int is not safe and invalid like a string will result in unwanted behaviour but anyway
+		// Inputting into int is not safe and invalid input like a string will result in unwanted behaviour but anyway
 		int selection = 0;
 		std::cin >> selection;
 		std::cout << std::endl;
