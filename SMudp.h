@@ -25,6 +25,7 @@
 #endif
 
 #include <WS2tcpip.h>
+#include <vector>
 
 namespace SMudp
 {
@@ -135,6 +136,16 @@ namespace SMudp
 		{
 			return closesocket(socket);
 		}
+
+		class UdpHost
+		{
+
+		};
+		
+		class UdpClient
+		{
+
+		};
 	}
 
 	namespace TCP
@@ -199,7 +210,7 @@ namespace SMudp
 			return -1;
 		}
 
-		inline int CloseSocket(SOCKET& socket)
+		inline int CloseSocket(const SOCKET& socket)
 		{
 			return closesocket(socket);
 		}
@@ -251,5 +262,151 @@ namespace SMudp
 		{
 			return connect(socket, (sockaddr*)target, sizeof(*target));
 		}
+
+		class TcpClient
+		{
+		private:
+			SOCKET clientSocket = 0;
+			sockaddr_in* clientAddress = nullptr;
+			sockaddr_in* serverAddress = nullptr;
+			char* inetAddr = nullptr;
+			char* inetPort = nullptr;
+
+		public:
+			TcpClient(SOCKET cSocket, sockaddr_in* address)
+			{
+				clientSocket = cSocket;
+				clientAddress = address;
+
+				CreateClientInformationBuffers(&inetAddr, &inetPort);
+				FillClientInformationBuffers(clientAddress, inetAddr, inetPort);
+			}
+
+			TcpClient(const char* address, int port)
+			{
+				clientSocket = CreateClientSocket();
+				CreateClientInformationBuffers(&inetAddr, &inetPort);
+				FillClientInformationBuffers(clientAddress, inetAddr, inetPort);
+
+				serverAddress = SMudp::TCP::CreateConnectionTarget(address, port);
+
+				int connectionResult = SMudp::TCP::ConnectSocket(clientSocket, serverAddress);
+				if (connectionResult == -1)
+				{
+					throw std::exception("Error connecting to server");
+				}
+			}
+
+			const char* GetIPAddress()
+			{
+				return inetAddr;
+			}
+
+			const char* GetPort()
+			{
+				return inetPort;
+			}
+
+			SOCKET GetSocket()
+			{
+				return clientSocket;
+			}
+
+			sockaddr_in* GetAddress()
+			{
+				return clientAddress;
+			}
+
+			void Send(const char* buffer, int count)
+			{
+				int sendOk = SMudp::TCP::Send(clientSocket, buffer, count);
+				if (sendOk == SOCKET_ERROR)
+				{
+					throw std::exception("Socket Error");
+				}
+			}
+
+			int Receive(char* buffer, int bufferSize)
+			{
+				ZeroMemory(buffer, bufferSize);
+
+				int bytesIn = SMudp::TCP::Receive(clientSocket, buffer, bufferSize);
+				if (bytesIn == SOCKET_ERROR)
+				{
+					throw std::exception("Socket Error");
+				}
+
+				return bytesIn;
+			}
+		};
+
+		class TcpHost
+		{
+		private:
+			std::vector<TcpClient*> connectedClients;
+			SOCKET listeningSocket = 0;
+			int port = -1;
+			bool onlyLoopback = false;
+
+		public:
+			TcpHost(int port, bool onlyLoopback)
+			{
+				this->port = port;
+				this->onlyLoopback = onlyLoopback;
+
+				if (!wsaOnline)
+				{
+					throw std::exception("WSA not online");
+				}
+
+				listeningSocket = SMudp::TCP::CreateListeningSocket(port, onlyLoopback);
+				if (listeningSocket == -1)
+				{
+					throw std::exception("Error creating or binding socket");
+				}
+
+			}
+			~TcpHost()
+			{
+				CloseSocket(listeningSocket);
+				for (auto& i : connectedClients)
+				{
+					SMudp::TCP::CloseSocket(i->GetSocket());
+				}
+			}
+
+			TcpClient* WaitForConnection()
+			{
+				SMudp::TCP::ListenForConnections(listeningSocket); // Wait for a connection
+
+				sockaddr_in* client = SMudp::TCP::CreateClient(); // Create a structure containing client information
+				SOCKET connected = SMudp::TCP::AcceptConnection(listeningSocket, client); // Accept connection, store data in client
+
+				TcpClient* clientStream = new TcpClient(connected, client);
+				connectedClients.push_back(clientStream);
+
+				return clientStream;
+			}
+
+			std::vector<TcpClient*>* GetConnectedClients()
+			{
+				return &connectedClients;
+			}
+
+			inline SOCKET GetListeningSocket()
+			{
+				return listeningSocket;
+			}
+
+			inline bool GetLoopback()
+			{
+				return onlyLoopback;
+			}
+
+			inline int GetPort()
+			{
+				return port;
+			}
+		};
 	}
 }
