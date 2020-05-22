@@ -32,6 +32,11 @@ namespace SMudp
 
 	int Startup(int versionMajor = 2, int versionMinor = 2)
 	{
+		if (wsaOnline)
+		{
+			return 0;
+		}
+
 		WORD version = MAKEWORD(versionMajor, versionMinor);
 		WSAData startupData;
 		int wsStatus = WSAStartup(version, &startupData);
@@ -44,81 +49,207 @@ namespace SMudp
 		return 0;
 	}
 
-	inline int Shutdown() // Shutdown Winsocks
+	inline int Shutdown() // Shutdown winsocks
 	{
+		if (!wsaOnline)
+		{
+			return 0;
+		}
+
 		wsaOnline = false;
 		return WSACleanup();
 	}
 	
-	inline int GetWSAError() // Returns last winsocks Error
+	inline int GetWSAError() // Returns last winsocks error
 	{
 		return WSAGetLastError();
 	}
 
-	int Receive(SOCKET socket, char* buffer, int bufferSize, sockaddr* from)
+	namespace UDP
 	{
-		int fromSize = sizeof(*from);
-		int bytesIn = recvfrom(socket, buffer, bufferSize, 0, from, &fromSize);
-		if (bytesIn == SOCKET_ERROR)
+		int Receive(SOCKET& socket, char* buffer, int bufferSize, sockaddr* from)
 		{
+			int fromSize = sizeof(*from);
+			ZeroMemory(buffer, bufferSize);
+
+			int bytesIn = recvfrom(socket, buffer, bufferSize, 0, from, &fromSize);
+			if (bytesIn == SOCKET_ERROR)
+			{
+				return -1;
+			}
+
+			return bytesIn;
+		}
+
+		int Send(SOCKET& socket, const char* buffer, int count, sockaddr* to)
+		{
+			int toSize = sizeof(*to);
+			int sendOk = sendto(socket, buffer, count, 0, to, toSize);
+			if (sendOk == SOCKET_ERROR)
+			{
+				return -1;
+			}
+
+			return sendOk;
+		}
+
+		SOCKET CreateHostSocket(int port, bool loopback = false) // Creates a socket and binds it to an address and a port
+		{
+			SOCKET sock = socket(AF_INET, SOCK_DGRAM, 0);
+			sockaddr_in* serverHint = new sockaddr_in();
+			if (loopback)
+			{
+				serverHint->sin_addr.S_un.S_addr = htonl(INADDR_LOOPBACK);
+			}
+			else
+			{
+				serverHint->sin_addr.S_un.S_addr = INADDR_ANY;
+			}
+			serverHint->sin_family = AF_INET;
+			serverHint->sin_port = htons(port);
+
+			if (bind(sock, (sockaddr*)serverHint, sizeof(*serverHint)) == SOCKET_ERROR)
+			{
+				return -1;
+			}
+
+			return sock;
+		}
+
+		sockaddr_in* CreateTarget(const char* address, int port) // Creates a structure defining data target
+		{
+			sockaddr_in* target = new sockaddr_in();
+			target->sin_family = AF_INET;
+			target->sin_port = htons(port);
+			inet_pton(AF_INET, address, &target->sin_addr);
+
+			return target;
+		}
+
+		inline SOCKET CreateClientSocket() // Creates a socket for the client
+		{
+			return socket(AF_INET, SOCK_DGRAM, 0);
+		}
+
+		inline int CloseSocket(SOCKET socket)
+		{
+			return closesocket(socket);
+		}
+	}
+
+	namespace TCP
+	{
+		SOCKET CreateListeningSocket(int port, bool loopback = false)
+		{
+			SOCKET listening = socket(AF_INET, SOCK_STREAM, 0);
+			if (listening == INVALID_SOCKET)
+			{
+				return -1;
+			}
+
+			sockaddr_in* serverHint = new sockaddr_in();
+			if (loopback)
+			{
+				serverHint->sin_addr.S_un.S_addr = htonl(INADDR_LOOPBACK);
+			}
+			else
+			{
+				serverHint->sin_addr.S_un.S_addr = INADDR_ANY;
+			}
+			serverHint->sin_family = AF_INET;
+			serverHint->sin_port = htons(port);
+
+			if (bind(listening, (sockaddr*)serverHint, sizeof(*serverHint)))
+			{
+				return -1;
+			}
+
+			return listening;
+		}
+
+		inline int ListenForConnections(SOCKET& listeningSocket)
+		{
+			return listen(listeningSocket, SOMAXCONN);
+		}
+
+		inline sockaddr_in* CreateClient()
+		{
+			return new sockaddr_in();
+		}
+
+		SOCKET AcceptConnection(SOCKET& listeningSocket, sockaddr_in* client)
+		{
+			int clientSize = sizeof(*client);
+
+			return accept(listeningSocket, (sockaddr*)client, &clientSize);
+		}
+
+		void CreateClientInformationBuffers(char** host, char** service)
+		{
+			*host = new char[NI_MAXHOST];
+			*service = new char[NI_MAXSERV];
+		}
+
+		inline int FillClientInformationBuffers(sockaddr_in* client, char* host, char* service)
+		{
+			if (getnameinfo((sockaddr*)client, sizeof(*client), host, NI_MAXHOST, service, NI_MAXSERV, 0) == 0)
+			{
+				return 0;
+			}
 			return -1;
 		}
 
-		return bytesIn;
-	}
-
-	int Send(SOCKET socket, const char* buffer, int count, sockaddr* to)
-	{
-		int toSize = sizeof(*to);
-		int sendOk = sendto(socket, buffer, count, 0, to, toSize);
-		if (sendOk == SOCKET_ERROR)
+		inline int CloseSocket(SOCKET& socket)
 		{
-			return -1;
+			return closesocket(socket);
 		}
 
-		return sendOk;
-	}
-	
-	SOCKET CreateHostSocket(int port, bool loopback = false) // Creates a socket and binds it to an address and a port
-	{
-		SOCKET sock = socket(AF_INET, SOCK_DGRAM, 0);
-		sockaddr_in* serverHint = new sockaddr_in();
-		if (loopback)
+		int Receive(SOCKET& client, char* buffer, int bufferSize)
 		{
-			serverHint->sin_addr.S_un.S_addr = htonl(INADDR_LOOPBACK);
+			ZeroMemory(buffer, bufferSize);
+
+			int bytesIn = recv(client, buffer, bufferSize, 0);
+			if (bytesIn == SOCKET_ERROR)
+			{
+				return -1;
+			}
+
+			return bytesIn;
 		}
-		else
+
+	    int Send(SOCKET& client, const char* buffer, int count)
 		{
-			serverHint->sin_addr.S_un.S_addr = INADDR_ANY;
+			int sendOk = send(client, buffer, count, 0);
+			if (sendOk == SOCKET_ERROR)
+			{
+				return -1;
+			}
+			return 0;
 		}
-		serverHint->sin_family = AF_INET;
-		serverHint->sin_port = htons(port);
 
-		if (bind(sock, (sockaddr*)serverHint, sizeof(*serverHint)) == SOCKET_ERROR)
+		SOCKET CreateClientSocket()
 		{
-			return -1;
-		}		
-		
-		return sock;
-	}
+			SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+			if (sock == INVALID_SOCKET)
+			{
+				return -1;
+			}
+			return sock;
+		}
 
-	sockaddr_in* CreateTarget(const char* address, int port) // Creates a structure defining data target
-	{
-		sockaddr_in* target = new sockaddr_in();
-		target->sin_family = AF_INET;
-		target->sin_port = htons(port);
-		inet_pton(AF_INET, address, &target->sin_addr);
+		sockaddr_in* CreateConnectionTarget(const char* address, int port)
+		{
+			sockaddr_in* target = new sockaddr_in();
+			inet_pton(AF_INET, address, &target->sin_addr);
+			target->sin_family = AF_INET;
+			target->sin_port = htons(port);
 
-		return target;
-	}
+			return target;
+		}
 
-	inline SOCKET CreateClientSocket() // Creates a socket for the client
-	{
-		return socket(AF_INET, SOCK_DGRAM, 0);
-	}
-
-	inline int CloseSocket(SOCKET socket)
-	{
-		return closesocket(socket);
+		inline int ConnectSocket(SOCKET& socket, sockaddr_in* target)
+		{
+			return connect(socket, (sockaddr*)target, sizeof(*target));
+		}
 	}
 }
