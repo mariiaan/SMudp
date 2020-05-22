@@ -21,47 +21,55 @@
 #include <string>
 #include <iostream>
 
+#pragma region UDP
 // A sample client example
-void Client()
+void UDPClient()
 {
 	std::cout << "Starting client...";
 	SMudp::Startup();
 	std::string buf; // Create input buffer
 
-	char responeBuf[1024]; // Create response buffer
+	char responseBuf[1024]; // Create response buffer
 	
-	SOCKET sock = SMudp::CreateClientSocket(); // Create socket for the client
-	sockaddr_in* target = SMudp::CreateTarget("127.0.0.1", 54000); // Create the target / information about the server
+	SOCKET sock = SMudp::UDP::CreateClientSocket(); // Create socket for the client
+	if (sock == -1)
+	{
+		std::cout << "Error binding or creating socket" << std::endl;
+		std::cout << SMudp::GetWSAError() << std::endl;
+		return; 
+	}
+	sockaddr_in* target = SMudp::UDP::CreateTarget("127.0.0.1", 54000); // Create the target / information about the server
 
 	std::cout << "Ready for input!" << std::endl;
 	while (true)
 	{
 		std::cin >> buf; // Input some characters
-		int sendOk = SMudp::Send(sock, buf.c_str(), buf.size(), (sockaddr*)target); // Send input data to the target
+		int sendOk = SMudp::UDP::Send(sock, buf.c_str(), buf.size() + 1, (sockaddr*)target); // Send input data to the target
 
-		ZeroMemory(responeBuf, 1024); // Prepare buffer for response
+		ZeroMemory(responseBuf, 1024); // Prepare buffer for response
 
-		int bytesIn = SMudp::Receive(sock, responeBuf, 1024, (sockaddr*)target); // Receive data into response buffer
+		int bytesIn = SMudp::UDP::Receive(sock, responseBuf, 1024, (sockaddr*)target); // Receive data into response buffer
 		if (bytesIn == -1)
 		{
 			std::cout << "Error receiving" << std::endl;
+			std::cout << SMudp::GetWSAError() << std::endl;
 			continue;
 		}
-		std::cout << responeBuf << std::endl; // Display server response
+		std::cout << responseBuf << std::endl; // Display server response
 	}
 
 	SMudp::Shutdown();
 }
 
 // A sample server example
-void Server()
+void UDPServer()
 {
 	std::cout << "Starting server...";
 
 	SMudp::Startup(); // Startup Winsocks
 
 	// Create socket for the server on port 54000 for loopback only
-	SOCKET sock = SMudp::CreateHostSocket(54000, true); 
+	SOCKET sock = SMudp::UDP::CreateHostSocket(54000, true); 
 
 	sockaddr_in client; // Create data buffer for receiving containing client information
 	int clientSize = sizeof(client);
@@ -75,24 +83,167 @@ void Server()
 	{
 		ZeroMemory(receiveBuf, 1024); // Prepare receive data buffer
 
-		int bytesIn = SMudp::Receive(sock, receiveBuf, 1024, (sockaddr*)&client); // Receive data into buffer
+		int bytesIn = SMudp::UDP::Receive(sock, receiveBuf, 1024, (sockaddr*)&client); // Receive data into buffer
 		if (bytesIn == -1)
 		{
 			std::cout << "Error receiving" << std::endl;
+			std::cout << SMudp::GetWSAError() << std::endl;
 			continue;
 		}
 
 		std::cout << "Message: " << receiveBuf << std::endl; // Display received data
 
-		int sendOk = SMudp::Send(sock, response.c_str(), response.size(), (sockaddr*)&client); // Respond by sending "okay!"
+		int sendOk = SMudp::UDP::Send(sock, response.c_str(), response.size(), (sockaddr*)&client); // Respond by sending "okay!"
 		if (sendOk == -1)
 		{
 			std::cout << "Error sending/responding" << std::endl;
+			std::cout << SMudp::GetWSAError() << std::endl;
 		}
 	}
 
 	SMudp::Shutdown(); // We won't get to this but anyway
 }
+#pragma endregion
+
+#pragma region TCP
+
+void TCPClient()
+{
+	SMudp::Startup();
+
+	SOCKET sock = SMudp::TCP::CreateClientSocket(); // Create a socket for the client
+	if (sock == -1)
+	{
+		std::cout << "Error creating socket" << std::endl;
+		std::cout << SMudp::GetWSAError() << std::endl;
+		SMudp::Shutdown();
+		return;
+	}
+	sockaddr_in* server = SMudp::TCP::CreateConnectionTarget("127.0.0.1", 54000);
+	int connectionResult = SMudp::TCP::ConnectSocket(sock, server); // Connect socket to server
+
+	if (connectionResult == -1)
+	{
+		std::cout << "Error connection to server" << std::endl;
+		std::cout << SMudp::GetWSAError() << std::endl;
+		SMudp::Shutdown();
+		return;
+	}
+
+	std::cout << "Connected" << std::endl;
+
+	char responseBuf[1024];
+	std::string userInput;
+
+	while (true)
+	{
+		std::cin >> userInput; // Get some input
+		ZeroMemory(responseBuf, 1024); // Prepare our response buffer
+
+		SMudp::TCP::Send(sock, userInput.c_str(), userInput.size() + 1); // Send inputted data
+		int bytesIn = SMudp::TCP::Receive(sock, responseBuf, 1024); // Receive data from server
+		if (bytesIn == 0)
+		{
+			std::cout << "Disconnected" << std::endl;
+			break;
+		}
+		else if (bytesIn == -1)
+		{
+			int wsaErr = SMudp::GetWSAError();
+			if (wsaErr == 10054)
+			{
+				std::cout << "Connection Reset by peer" << std::endl;
+				break;
+			}
+			std::cout << wsaErr << std::endl;
+		}
+
+		std::cout << responseBuf << std::endl; // Finally: Display data
+	}
+
+	SMudp::TCP::CloseSocket(sock);
+
+	SMudp::Shutdown();
+}
+
+void TCPServer()
+{
+	SMudp::Startup();
+
+	// Create a listening socket for incoming connections
+	SOCKET listening = SMudp::TCP::CreateListeningSocket(54000);
+	if (listening == -1)
+	{
+		std::cout << "Error binding or creating socket" << std::endl;
+		std::cout << SMudp::GetWSAError() << std::endl;
+		return;
+	}
+
+	SMudp::TCP::ListenForConnections(listening); // Wait for a connection
+
+	sockaddr_in* client = SMudp::TCP::CreateClient(); // Create a structure containing client information
+	SOCKET connected = SMudp::TCP::AcceptConnection(listening, client); // Accept connection, store data in client
+
+	char* host = nullptr;
+	char* service = nullptr;
+
+	SMudp::TCP::CreateClientInformationBuffers(&host, &service); // Create buffers for IP Address / Port
+	int result = SMudp::TCP::FillClientInformationBuffers(client, host, service); // Get IP Address / Port
+	if (result == -1)
+	{
+		std::cout << "Address resolution error" << std::endl;
+		std::cout << SMudp::GetWSAError() << std::endl;
+	}
+
+	std::cout << "Connection from " << host << " on " << service << std::endl;
+
+	char buffer[1024];
+
+	while (true)
+	{
+		ZeroMemory(buffer, 1024); // Prepare data buffer for incoming data
+
+		int bytesIn = SMudp::TCP::Receive(connected, buffer, 1024); // Receive data into buffer
+		if (bytesIn == -1)
+		{
+			std::cout << "Error receiving" << std::endl;
+			std::cout << SMudp::GetWSAError() << std::endl;
+		}
+		if (bytesIn == 0)
+		{
+			std::cout << "Client disconnect" << std::endl;
+			break;
+		}
+		else if (bytesIn == -1)
+		{
+			int wsaErr = SMudp::GetWSAError();
+			if (wsaErr == 10054)
+			{
+				std::cout << "Connection Reset by peer" << std::endl;
+				break;
+			}
+			std::cout << wsaErr << std::endl;
+		}
+
+		int sendOk = SMudp::TCP::Send(connected, buffer, bytesIn); // Send back data
+		if (sendOk == -1)
+		{
+			std::cout << "Error sending" << std::endl;
+			std::cout << SMudp::GetWSAError() << std::endl;
+		}
+	}
+	// We won't get here but anyway
+
+	// Close all sockets
+	SMudp::TCP::CloseSocket(connected); 
+	SMudp::TCP::CloseSocket(listening);
+
+	// Shutdown winsocks
+	SMudp::Shutdown();
+}
+
+#pragma endregion
+
 
 // Our application entry point
 int main(int argc, char* argv[])
@@ -101,12 +252,14 @@ int main(int argc, char* argv[])
 	while (true)
 	{
 		std::cout << "Select Mode:" << std::endl;
-		std::cout << "\t1: Client" << std::endl;
-		std::cout << "\t2: Server" << std::endl;
+		std::cout << "\t1: UDP: Client" << std::endl;
+		std::cout << "\t2: UDP: Server" << std::endl;
+		std::cout << "\t3: TCP: Client" << std::endl;
+		std::cout << "\t4: TCP: Server" << std::endl;
 
 		std::cout << "Input: ";
 
-		// Inputting into int is not safe and invalid input like a string will result in unwanted behaviour but anyway
+		// Inputting into int is not safe and invalid like a string will result in unwanted behaviour but anyway
 		int selection = 0;
 		std::cin >> selection;
 		std::cout << std::endl;
@@ -114,11 +267,19 @@ int main(int argc, char* argv[])
 		switch (selection)
 		{
 		case 1:
-			Client();
+			UDPClient();
 			return 0;
 			break;
 		case 2:
-			Server();
+			UDPServer();
+			return 0;
+			break;
+		case 3:
+			TCPClient();
+			return 0;
+			break;
+		case 4:
+			TCPServer();
 			return 0;
 			break;
 		default:
