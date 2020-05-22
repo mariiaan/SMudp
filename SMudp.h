@@ -297,6 +297,11 @@ namespace SMudp
 				}
 			}
 
+			~TcpClient()
+			{
+				SMudp::TCP::CloseSocket(clientSocket);
+			}
+
 			const char* GetIPAddress()
 			{
 				return inetAddr;
