@@ -244,6 +244,60 @@ void TCPServer()
 
 #pragma endregion
 
+#pragma region OO
+
+void OOTcpClient()
+{
+	SMudp::Startup();
+
+	SMudp::TCP::TcpClient client("127.0.0.1", 54000); // Connect to localhost on 54000
+	std::string input; // Prepare a input buffer
+	char buffer[1024]; // Prepare a response buffer
+
+	while (true)
+	{
+		std::cin >> input; // Read some input
+		client.Send(input.c_str(), input.size() + 1); // Send input to server
+		client.Receive(buffer, 1024); // Receive response
+
+		std::cout << buffer << std::endl; // Display response
+	}
+
+	// TcpClient's socket will automatically be closed
+
+	SMudp::Shutdown();
+}
+
+void OOTcpServer()
+{
+	SMudp::Startup();
+
+	SMudp::TCP::TcpHost host(54000, false); // Host a server on *:54000
+	SMudp::TCP::TcpClient* client = host.WaitForConnection(); // Wait for a single TCP connection and accept it
+
+	std::cout << "Client connected: " << client->GetIPAddress() << " on " << client->GetPort() << std::endl;
+
+	char buffer[1024]; // A buffer for receiving data
+
+	while (true)
+	{
+		int bytesIn = client->Receive(buffer, 1024);
+		if (bytesIn == 0)
+		{
+			std::cout << "Client disconnect" << std::endl;
+			break;
+		}
+		std::cout << "Message from client: " << buffer << std::endl;
+
+		client->Send(buffer, bytesIn); // Reply by echoing back
+	}
+
+	// All sockets are automatically closed when "host" runs out of scope
+
+	SMudp::Shutdown(); // Shutdown winsocks
+}
+
+#pragma endregion
 
 // Our application entry point
 int main(int argc, char* argv[])
