@@ -250,19 +250,42 @@ void OOTcpClient()
 {
 	SMudp::Startup();
 
-	SMudp::TCP::TcpClient client("127.0.0.1", 54000); // Connect to localhost on 54000
-	std::string input; // Prepare a input buffer
-	char buffer[1024]; // Prepare a response buffer
-
-	while (true)
+	try
 	{
-		std::cin >> input; // Read some input
-		client.Send(input.c_str(), input.size() + 1); // Send input to server
-		client.Receive(buffer, 1024); // Receive response
+		SMudp::TCP::TcpClient client("127.0.0.1", 54000); // Connect to localhost on 54000
+		std::string input; // Prepare a input buffer
+		char buffer[1024]; // Prepare a response buffer
 
-		std::cout << buffer << std::endl; // Display response
+		while (true)
+		{
+			std::cin >> input; // Read some input
+			try
+			{
+				client.Send(input.c_str(), input.size() + 1); // Send input to server
+			}
+			catch (std::exception & ex)
+			{
+				std::cout << "Error: " << ex.what() << std::endl;
+				break;
+			}
+
+			try
+			{
+				client.Receive(buffer, 1024); // Receive response
+			}
+			catch (std::exception & ex)
+			{
+				std::cout << "Error: " << ex.what() << std::endl;
+				break;
+			}
+
+			std::cout << buffer << std::endl; // Display response
+		}
 	}
-
+	catch (std::exception& ex)
+	{
+		std::cout << "Error: " << ex.what() << std::endl;
+	}
 	// TcpClient's socket will automatically be closed
 
 	SMudp::Shutdown();
@@ -281,15 +304,27 @@ void OOTcpServer()
 
 	while (true)
 	{
-		int bytesIn = client->Receive(buffer, 1024);
-		if (bytesIn == 0)
+		int bytesIn = 0;
+		try
 		{
-			std::cout << "Client disconnect" << std::endl;
+			bytesIn = client->Receive(buffer, 1024);
+		}
+		catch (std::exception& ex)
+		{
+			std::cout << "Error: " << ex.what() << std::endl;
 			break;
 		}
 		std::cout << "Message from client: " << buffer << std::endl;
 
-		client->Send(buffer, bytesIn); // Reply by echoing back
+		try
+		{
+			client->Send(buffer, bytesIn); // Reply by echoing back
+		}
+		catch (std::exception& ex)
+		{
+			std::cout << "Error: " << ex.what() << std::endl;
+			break;
+		}	
 	}
 
 	// All sockets are automatically closed when "host" runs out of scope
@@ -329,11 +364,11 @@ int main(int argc, char* argv[])
 			return 0;
 			break;
 		case 3:
-			TCPClient();
+			OOTcpClient();
 			return 0;
 			break;
 		case 4:
-			TCPServer();
+			OOTcpServer();
 			return 0;
 			break;
 		default:
@@ -341,6 +376,8 @@ int main(int argc, char* argv[])
 			break;
 		}	
 	}
-	
+
+	std::cout << "exit 0" << std::endl;
+	std::cin.get();
 	return 0;
 }
