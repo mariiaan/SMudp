@@ -300,6 +300,12 @@ namespace SMudp
 			~TcpClient()
 			{
 				SMudp::TCP::CloseSocket(clientSocket);
+
+				delete[] inetAddr;
+				delete[] inetPort;
+
+				delete clientAddress;
+				delete serverAddress;
 			}
 
 			const char* GetIPAddress()
@@ -327,7 +333,7 @@ namespace SMudp
 				int sendOk = SMudp::TCP::Send(clientSocket, buffer, count);
 				if (sendOk == SOCKET_ERROR)
 				{
-					throw std::exception("Socket Error");
+					throw std::exception("socket error");
 				}
 			}
 
@@ -338,7 +344,11 @@ namespace SMudp
 				int bytesIn = SMudp::TCP::Receive(clientSocket, buffer, bufferSize);
 				if (bytesIn == SOCKET_ERROR)
 				{
-					throw std::exception("Socket Error");
+					throw std::exception("socket error");
+				}
+				if (bytesIn == 0)
+				{
+					throw std::exception("socket disconnect");
 				}
 
 				return bytesIn;
@@ -376,7 +386,7 @@ namespace SMudp
 				CloseSocket(listeningSocket);
 				for (auto& i : connectedClients)
 				{
-					SMudp::TCP::CloseSocket(i->GetSocket());
+					delete i;
 				}
 			}
 
