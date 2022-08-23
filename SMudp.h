@@ -94,6 +94,18 @@ namespace SMudp
 			return sendOk;
 		}
 
+		int BytesAvailable(SOCKET& socket)
+		{
+			fd_set fds;
+			FD_ZERO(&fds);
+			FD_SET(socket, &fds);
+			struct timeval tv;
+			tv.tv_sec = 0;
+			tv.tv_usec = 0;
+
+			return select(socket, &fds, nullptr, nullptr, &tv);
+		}
+
 		SOCKET CreateHostSocket(int port, bool loopback = false) // Creates a socket and binds it to an address and a port
 		{
 			SOCKET sock = socket(AF_INET, SOCK_DGRAM, 0);
