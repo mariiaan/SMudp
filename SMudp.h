@@ -1,6 +1,6 @@
 /*  
 	SMudp - A simple and lightweight network library
-	"SMudp.h" - (C) Copyright 2020, samplefx
+	"SMudp.h" - (C) Copyright 2020, 2022, samplefx
 
 	Copyright 2020 samplefx
 
